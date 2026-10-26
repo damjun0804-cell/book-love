@@ -15,6 +15,9 @@
       --accent-hover: #1c4ed8;
       --quote-bg: #f1f5f9;
       --quote-border: #cbd5e1;
+      --danger-color: #ef4444;
+      --warning-color: #d97706;
+      --warning-hover: #b45309;
       --shadow-sm: 0 1px 3px rgba(0,0,0,0.05);
       --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.1);
       --radius: 12px;
@@ -344,6 +347,48 @@
       margin-right: 0.4rem;
     }
 
+    .card-actions {
+      position: absolute;
+      top: 1rem;
+      right: 1rem;
+      display: none;
+      gap: 6px;
+    }
+
+    body.admin-mode .card-actions {
+      display: flex;
+    }
+
+    .edit-btn {
+      background: #fef3c7;
+      color: var(--warning-color);
+      border: none;
+      padding: 4px 10px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+
+    .edit-btn:hover {
+      background: #fde68a;
+    }
+
+    .delete-btn {
+      background: #fee2e2;
+      color: var(--danger-color);
+      border: none;
+      padding: 4px 10px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+
+    .delete-btn:hover {
+      background: #fca5a5;
+    }
+
     .empty-msg {
       text-align: center;
       padding: 3rem;
@@ -379,10 +424,11 @@
 
     <div class="admin-panel" id="admin-panel" style="display: none;">
       <div class="admin-header">
-        <h2>새 도서 기록 추가</h2>
+        <h2 id="form-heading">새 도서 기록 추가</h2>
         <button class="btn-secondary" id="btn-back-user">← 돌아가기</button>
       </div>
       <form id="book-form" class="form-grid">
+        <input type="hidden" id="edit-book-id">
         <div class="form-group full-width">
           <label for="title">도서 제목 *</label>
           <input type="text" id="title" required placeholder="예: 50센티 더 가까워지는 선물보다 좋은 말">
@@ -427,7 +473,7 @@
           <label for="oneLineReview">한줄평 *</label>
           <textarea id="oneLineReview" required placeholder="책에 대한 한줄평을 입력하세요."></textarea>
         </div>
-        <button type="submit" class="submit-btn">도서 기록 저장하기</button>
+        <button type="submit" class="submit-btn" id="submit-btn-text">도서 기록 저장하기</button>
       </form>
     </div>
 
@@ -441,7 +487,7 @@
 
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/13.1.0/firebase-app.js";
-    import { getDatabase, ref, push, get } from "https://www.gstatic.com/firebasejs/13.1.0/firebase-database.js";
+    import { getDatabase, ref, push, get, remove, update } from "https://www.gstatic.com/firebasejs/13.1.0/firebase-database.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyA7atK5YPmm6B4nYtYfeUHnkJElkqiZMb8",
@@ -453,7 +499,8 @@
       appId: "1:182848990237:web:9577b0f6d150b8acdceaf4"
     };
 
-    const ENCODED_ADMIN_PW = "MTEwNw=="; // 1107
+    // 비밀번호 '1107'의 Base64 인코딩 값
+    const ENCODED_ADMIN_PW = "MTEwNw==";
 
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
@@ -466,6 +513,9 @@
     const bookList = document.getElementById('book-list');
     const bookForm = document.getElementById('book-form');
     const searchInput = document.getElementById('search-input');
+    const formHeading = document.getElementById('form-heading');
+    const submitBtnText = document.getElementById('submit-btn-text');
+    const editBookIdInput = document.getElementById('edit-book-id');
 
     async function loadBooks() {
       try {
@@ -523,6 +573,10 @@
 
         const cardHTML = `
           <article class="book-card" data-id="${book.id}">
+            <div class="card-actions">
+              <button class="edit-btn" onclick="openEditModal('${book.id}')">수정</button>
+              <button class="delete-btn" onclick="deleteBookCard('${book.id}')">삭제</button>
+            </div>
             <div class="card-top">
               <img src="${coverSrc}" alt="${book.title} 표지" class="book-cover" onerror="this.src='${defaultCover}'">
               <div class="book-info">
@@ -575,8 +629,14 @@
       const inputPw = prompt("관리자 비밀번호를 입력하세요:");
       if (inputPw !== null) {
         if (btoa(inputPw) === ENCODED_ADMIN_PW) {
+          editBookIdInput.value = "";
+          formHeading.textContent = "새 도서 기록 추가";
+          submitBtnText.textContent = "도서 기록 저장하기";
           bookForm.reset();
+
           adminPanel.style.display = 'block';
+          document.body.classList.add('admin-mode');
+
           window.scrollTo({ top: adminPanel.offsetTop - 20, behavior: 'smooth' });
         } else {
           alert("비밀번호가 올바르지 않습니다.");
@@ -586,6 +646,7 @@
 
     btnBackUser.addEventListener('click', () => {
       adminPanel.style.display = 'none';
+      document.body.classList.remove('admin-mode');
     });
 
     function convertImageFile(file) {
@@ -610,6 +671,31 @@
       });
     }
 
+    window.openEditModal = (id) => {
+      const book = booksData.find(b => b.id === id);
+      if (!book) return;
+
+      editBookIdInput.value = book.id;
+      document.getElementById('title').value = book.title || '';
+      document.getElementById('author').value = book.author || '';
+      document.getElementById('publisher').value = book.publisher || '';
+      document.getElementById('hashtags').value = book.hashtags || '';
+      document.getElementById('startDate').value = book.startDate || '';
+      document.getElementById('endDate').value = book.endDate || '';
+      document.getElementById('progressPercent').value = book.progressPercent || 0;
+      document.getElementById('quotePage').value = book.quotePage || '';
+      document.getElementById('quoteContent').value = book.quoteContent || '';
+      document.getElementById('oneLineReview').value = book.oneLineReview || '';
+      document.getElementById('coverImageFile').value = '';
+
+      formHeading.textContent = "도서 기록 수정하기";
+      submitBtnText.textContent = "수정사항 저장하기";
+
+      adminPanel.style.display = 'block';
+      document.body.classList.add('admin-mode');
+      window.scrollTo({ top: adminPanel.offsetTop - 20, behavior: 'smooth' });
+    };
+
     bookForm.addEventListener('submit', async (e) => {
       e.preventDefault();
 
@@ -620,33 +706,57 @@
         coverUrl = await convertImageFile(imageFile);
       }
 
+      const editId = editBookIdInput.value;
+      const existingBook = editId ? booksData.find(b => b.id === editId) : null;
+
       const bookData = {
         title: document.getElementById('title').value.trim(),
         author: document.getElementById('author').value.trim(),
         publisher: document.getElementById('publisher').value.trim(),
         hashtags: document.getElementById('hashtags').value.trim(),
-        coverUrl: coverUrl,
+        coverUrl: coverUrl !== "" ? coverUrl : (existingBook ? existingBook.coverUrl : ""),
         startDate: document.getElementById('startDate').value,
         endDate: document.getElementById('endDate').value,
         progressPercent: document.getElementById('progressPercent').value,
         quotePage: document.getElementById('quotePage').value.trim(),
         quoteContent: document.getElementById('quoteContent').value.trim(),
         oneLineReview: document.getElementById('oneLineReview').value.trim(),
-        createdAt: new Date().toISOString()
       };
 
       try {
-        const booksRef = ref(db, "books");
-        await push(booksRef, bookData);
-        alert("성공적으로 도서 기록이 등록되었습니다!");
+        if (editId) {
+          const bookRef = ref(db, `books/${editId}`);
+          await update(bookRef, bookData);
+          alert("도서 기록이 성공적으로 수정되었습니다!");
+        } else {
+          bookData.createdAt = new Date().toISOString();
+          const booksRef = ref(db, "books");
+          await push(booksRef, bookData);
+          alert("성공적으로 도서 기록이 등록되었습니다!");
+        }
 
         bookForm.reset();
+        editBookIdInput.value = "";
         adminPanel.style.display = 'none';
+        document.body.classList.remove('admin-mode');
         loadBooks();
       } catch (error) {
         alert("처리 중 오류가 발생했습니다: " + error.message);
       }
     });
+
+    window.deleteBookCard = async (id) => {
+      if (!confirm("정말 이 도서 기록을 삭제하시겠습니까?")) return;
+
+      try {
+        const bookRef = ref(db, `books/${id}`);
+        await remove(bookRef);
+        alert("삭제되었습니다.");
+        loadBooks();
+      } catch (error) {
+        alert("삭제에 실패했습니다: " + error.message);
+      }
+    };
 
     searchInput.addEventListener('input', (e) => {
       const keyword = e.target.value.toLowerCase();
